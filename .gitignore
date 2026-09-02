@@ -1,0 +1,15 @@
+# Real secrets — never commit
+keys.txt
+keys.json
+cooldown.json
+.env
+.env.*
+!.env.example
+
+# Local binaries / coverage
+/mistral-sticky
+/bin/
+coverage.out
+*.exe
+*.test
+.DS_Store

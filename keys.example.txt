@@ -1,0 +1,4 @@
+# Copy to keys.txt on the server. Do not commit keys.txt.
+# One key per line. Never reorder or delete middle lines.
+replace-with-real-key-1
+replace-with-real-key-2
