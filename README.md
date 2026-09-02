@@ -1,10 +1,10 @@
 # mistral-sticky
 
+[English](README.md) | [中文](README.zh.md)
+
 [![ci](https://github.com/IM594/mistral-sticky/actions/workflows/ci.yml/badge.svg)](https://github.com/IM594/mistral-sticky/actions/workflows/ci.yml)
 
 Pin a conversation to one Mistral API key so [prefix cache](https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching) can hit.
-
-多 key 随机轮询会把同一段对话打到不同账号上，Mistral 前缀缓存几乎打不中。这个进程只做粘性：同一会话哈希到同一把 key。
 
 ```
 clients  →  New API (billing, tokens)
@@ -13,6 +13,12 @@ clients  →  New API (billing, tokens)
 ```
 
 It is a reverse proxy, not a gateway. No UI, no quota, no protocol translation beyond what Mistral's Chat Completions API needs.
+
+Public image (linux/amd64 and linux/arm64), no login required to pull:
+
+```bash
+docker pull ghcr.io/im594/mistral-sticky:latest
+```
 
 ## Why
 
@@ -29,26 +35,47 @@ This proxy:
 
 On 401/403 the key is cooled for 30 days and the session fails over. **429 does not rotate** — that would kill the cache.
 
-## Quick start
+## Docker
+
+The image is distroless and contains **only the binary**. Keys are mounted at runtime. Never bake `keys.txt` into a layer.
 
 ```bash
-cp .env.example .env          # set PROXY_TOKEN
+cp .env.example .env                 # set PROXY_TOKEN
 mkdir -p data
-cp keys.example.txt data/keys.txt   # real keys, never commit
+cp keys.example.txt data/keys.txt    # real keys, never commit
+printf '{"entries":[]}\n' > data/cooldown.json
+# distroless runs as uid 65532
+sudo chown -R 65532:65532 data
+docker compose up -d
+```
+
+`docker-compose.yml` pulls `ghcr.io/im594/mistral-sticky:latest`. Pin a release with `ghcr.io/im594/mistral-sticky:v0.1.1` if you do not want `latest`.
+
+If New API is on another Compose network, use `docker-compose.external-network.yml` and set the Mistral channel `base_url` to `http://mistral-sticky:8080`.
+
+Without Compose:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8080:8080 \
+  --env-file .env \
+  -e LISTEN=:8080 \
+  -e KEYS_FILE=/data/keys.txt \
+  -e COOLDOWN_FILE=/data/cooldown.json \
+  -v "$PWD/data:/data" \
+  ghcr.io/im594/mistral-sticky:latest
+```
+
+## Run from source
+
+```bash
+cp .env.example .env
+mkdir -p data
+cp keys.example.txt data/keys.txt
 printf '{"entries":[]}\n' > data/cooldown.json
 go test ./...
 go run ./cmd/mistral-sticky
 ```
-
-Docker:
-
-```bash
-docker compose up -d --build
-```
-
-The image is distroless and copies only the binary. Mount `data/keys.txt` at runtime. Do not `COPY` keys into the image.
-
-If New API runs on another Compose network, add an override that attaches this service to that network and point the Mistral channel `base_url` at `http://mistral-sticky:8080`.
 
 ## New API
 
@@ -57,7 +84,7 @@ Channel type stays **Mistral (42)**. Then:
 | Setting | Value |
 |---|---|
 | `base_url` | `http://mistral-sticky:8080` |
-| Key | one `PROXY_TOKEN`, not the 500 Mistral keys |
+| Key | one `PROXY_TOKEN`, not the pool of Mistral keys |
 | Multi-key | off |
 | Auto ban | off |
 | `pass_through_body_enabled` | **on** (so New API does not randomize tool-call ids each turn) |

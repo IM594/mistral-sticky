@@ -1,7 +1,6 @@
 services:
   mistral-sticky:
-    build: .
-    image: ghcr.io/im594/mistral-sticky:local
+    image: ghcr.io/im594/mistral-sticky:latest
     container_name: mistral-sticky
     restart: unless-stopped
     mem_limit: 128m
