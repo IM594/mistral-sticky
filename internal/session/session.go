@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -103,4 +104,30 @@ func contentText(raw json.RawMessage) string {
 func Fingerprint(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])[:12]
+}
+
+// InjectPromptCacheKey writes a stable prompt_cache_key without re-encoding messages.
+func InjectPromptCacheKey(body []byte, key string) []byte {
+	if key == "" || len(body) == 0 {
+		return body
+	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(body, &root); err != nil {
+		return body
+	}
+	enc, err := json.Marshal(key)
+	if err != nil {
+		return body
+	}
+	if existing, ok := root["prompt_cache_key"]; ok && bytes.Equal(existing, enc) {
+		return body
+	}
+	root["prompt_cache_key"] = enc
+	var buf bytes.Buffer
+	encJSON := json.NewEncoder(&buf)
+	encJSON.SetEscapeHTML(false)
+	if err := encJSON.Encode(root); err != nil {
+		return body
+	}
+	return bytes.TrimSpace(buf.Bytes())
 }

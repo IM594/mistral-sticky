@@ -101,16 +101,87 @@ func TestUnauthorizedUpstreamDisablesKey(t *testing.T) {
 	}
 }
 
-func TestRateLimitMappedTo502(t *testing.T) {
-	h, _ := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTooManyRequests)
+func TestRateLimitDoesNotRotateKey(t *testing.T) {
+	var auths []string
+	h, p := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		if len(auths) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"mistral-small-latest","messages":[{"role":"user","content":"hello"}]}`))
+	body := `{"model":"mistral-small-latest","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadGateway {
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("first status=%d", rec.Code)
+	}
+	if p.DisabledCount() != 0 {
+		t.Fatalf("429 must not disable keys, disabled=%d", p.DisabledCount())
+	}
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req2.Header.Set("Authorization", "Bearer "+testToken)
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	if rec2.Code != 200 {
+		t.Fatalf("second status=%d", rec2.Code)
+	}
+	if len(auths) != 2 || auths[0] != auths[1] {
+		t.Fatalf("expected same upstream key after 429, auths=%v", auths)
+	}
+}
+
+func TestDropsUnsupportedReasoningEffort(t *testing.T) {
+	var got []byte
+	h, _ := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		got, _ = io.ReadAll(r.Body)
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	body := `{"model":"mistral-medium-latest","reasoning_effort":"medium","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
 		t.Fatalf("status=%d", rec.Code)
+	}
+	if strings.Contains(string(got), "reasoning_effort") {
+		t.Fatalf("reasoning_effort leaked upstream: %s", got)
+	}
+}
+
+func TestInjectsStablePromptCacheKey(t *testing.T) {
+	var keys []string
+	h, _ := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var parsed struct {
+			PromptCacheKey string `json:"prompt_cache_key"`
+		}
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			t.Errorf("body=%s err=%v", raw, err)
+		}
+		keys = append(keys, parsed.PromptCacheKey)
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	turn1 := `{"model":"mistral-small-latest","messages":[{"role":"system","content":"sys"},{"role":"user","content":"hello"}]}`
+	turn2 := `{"model":"mistral-small-latest","messages":[{"role":"system","content":"sys"},{"role":"user","content":"hello"},{"role":"assistant","content":"ok"},{"role":"user","content":"more"}]}`
+	for _, body := range []string{turn1, turn2} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 200 {
+			t.Fatalf("status=%d", rec.Code)
+		}
+	}
+	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+		t.Fatalf("prompt_cache_key not stable: %v", keys)
 	}
 }
 

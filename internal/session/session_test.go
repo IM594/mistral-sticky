@@ -2,6 +2,7 @@ package session
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -78,5 +79,33 @@ func TestFingerprint_length(t *testing.T) {
 	fp := Fingerprint("sess-1")
 	if len(fp) != 12 {
 		t.Fatalf("len=%d", len(fp))
+	}
+}
+
+func TestInjectPromptCacheKey_addsStableKey(t *testing.T) {
+	in := []byte(`{"model":"mistral-small-latest","messages":[{"role":"user","content":"hello"}]}`)
+	out := InjectPromptCacheKey(in, "sess-42")
+	if string(out) == string(in) {
+		t.Fatal("expected body to gain prompt_cache_key")
+	}
+	got := Key(nil, out)
+	if got != "sess-42" {
+		t.Fatalf("session key=%q", got)
+	}
+}
+
+func TestInjectPromptCacheKey_idempotent(t *testing.T) {
+	in := []byte(`{"model":"mistral-small-latest","prompt_cache_key":"sess-42","messages":[{"role":"user","content":"hello"}]}`)
+	out := InjectPromptCacheKey(in, "sess-42")
+	if string(out) != string(in) {
+		t.Fatalf("expected original bytes, got %s", out)
+	}
+}
+
+func TestInjectPromptCacheKey_preservesMessageBytes(t *testing.T) {
+	in := []byte(`{"messages":[{"role":"user","content":"a < b & c"}],"model":"mistral-small-latest"}`)
+	out := InjectPromptCacheKey(in, "sess-42")
+	if !strings.Contains(string(out), `"content":"a < b & c"`) {
+		t.Fatalf("message bytes mutated: %s", out)
 	}
 }

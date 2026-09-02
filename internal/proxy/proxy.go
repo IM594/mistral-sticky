@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IM594/mistral-sticky/internal/compat"
 	"github.com/IM594/mistral-sticky/internal/pool"
 	"github.com/IM594/mistral-sticky/internal/session"
 	"github.com/IM594/mistral-sticky/internal/toolid"
@@ -57,10 +58,6 @@ func New(cfg Config) http.Handler {
 				cfg.Pool.Disable(idx, pool.CooldownUnauthorized, strconv.Itoa(resp.StatusCode))
 				resp.StatusCode = http.StatusBadGateway
 				resp.Status = "502 Bad Gateway"
-			case resp.StatusCode == http.StatusTooManyRequests:
-				cfg.Pool.Disable(idx, pool.CooldownRateLimit, "429")
-				resp.StatusCode = http.StatusBadGateway
-				resp.Status = "502 Bad Gateway"
 			case resp.StatusCode >= 500:
 				cfg.Pool.Disable(idx, pool.CooldownUpstream, strconv.Itoa(resp.StatusCode))
 			}
@@ -91,6 +88,8 @@ func New(cfg Config) http.Handler {
 			rewritten = body
 		}
 		sess := session.Key(r.Header, rewritten)
+		rewritten = compat.Sanitize(rewritten)
+		rewritten = session.InjectPromptCacheKey(rewritten, sess)
 		idx, key, ok := cfg.Pool.Pick(sess)
 		if !ok {
 			http.Error(w, "no available key", http.StatusServiceUnavailable)
