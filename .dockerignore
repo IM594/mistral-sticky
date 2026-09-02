@@ -1,0 +1,12 @@
+.git
+.cursor
+.github
+data
+.env
+.env.*
+keys.txt
+cooldown.json
+coverage.out
+bin
+*.md
+LICENSE

@@ -1,3 +1,5 @@
+.cursor/
+
 # Real secrets — never commit
 keys.txt
 keys.json

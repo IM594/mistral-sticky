@@ -1,0 +1,12 @@
+# Optional: attach to an existing Docker network (e.g. the one New API uses).
+# docker compose -f docker-compose.yml -f docker-compose.external-network.yml up -d
+services:
+  mistral-sticky:
+    ports: []
+    networks:
+      - llm-net
+
+networks:
+  llm-net:
+    external: true
+    name: llm-net
