@@ -6,6 +6,9 @@ cooldown.json
 .env.*
 !.env.example
 
+# Runtime data (keys, cooldown) — server only
+/data/
+
 # Local binaries / coverage
 /mistral-sticky
 /bin/

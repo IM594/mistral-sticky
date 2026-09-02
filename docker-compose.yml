@@ -1,0 +1,17 @@
+services:
+  mistral-sticky:
+    build: .
+    image: ghcr.io/im594/mistral-sticky:local
+    container_name: mistral-sticky
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    environment:
+      LISTEN: ":8080"
+      KEYS_FILE: /data/keys.txt
+      COOLDOWN_FILE: /data/cooldown.json
+    volumes:
+      - ./data:/data
