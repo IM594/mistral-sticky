@@ -8,9 +8,7 @@ mistral-sticky 是面向 [Mistral API](https://docs.mistral.ai/) 的粘性 key �
 
 Mistral 的 [前缀缓存](https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching) 按 API key 生效。命中的 prompt token 按输入价的 10% 计费。若中继在每轮请求上随机更换 key，缓存无法命中。
 
-```
-client  →  [optional relay]  →  mistral-sticky  →  api.mistral.ai
-```
+![同一段对话钉在一把 Mistral key 上](docs/architecture.png)
 
 ```bash
 docker pull ghcr.io/im594/mistral-sticky:latest

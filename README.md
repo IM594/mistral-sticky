@@ -8,9 +8,7 @@ mistral-sticky is a sticky key pool for the [Mistral API](https://docs.mistral.a
 
 Mistral [prefix cache](https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching) is scoped to the API key. Cached prompt tokens are billed at 10% of input. A relay that picks a random key every turn will not hit that cache.
 
-```
-client  →  [optional relay]  →  mistral-sticky  →  api.mistral.ai
-```
+![One conversation, one Mistral key](docs/architecture.png)
 
 ```bash
 docker pull ghcr.io/im594/mistral-sticky:latest
