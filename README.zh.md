@@ -12,7 +12,7 @@
                        按会话选 key
 ```
 
-这是反代，不是网关。没有 UI、没有额度、除了 Mistral Chat Completions 必需的清洗以外不做协议转换。
+带会话粘性的 Mistral key 池：进站一把 `PROXY_TOKEN`，出站换成 `keys.txt` 里的一把，同一段对话钉在同一把 key 上。没有 UI、没有额度。只做 Mistral Chat Completions 必需的清洗。
 
 公开镜像（linux/amd64 与 linux/arm64），拉取不需要登录：
 
@@ -24,7 +24,7 @@ docker pull ghcr.io/im594/mistral-sticky:latest
 
 Mistral 按 **API key** 缓存 `messages` 的公共前缀。New API 一类中继经常在一个渠道里塞几百把 key，模式还是 `random`。相邻两轮落到不同账号上，即使用 1 万 token 的 agent 对话，`cache_tokens` 也接近 0。
 
-这个代理会：
+它会：
 
 1. 用一把 `PROXY_TOKEN` 鉴权（New API 渠道里只存这一把）
 2. 从 `prompt_cache_key` / `conversation_id` / metadata 取会话，否则 `sha256(model + 第一条 system + 第一条 user)`

@@ -12,7 +12,7 @@ clients  →  New API (billing, tokens)
                        pick key by session
 ```
 
-It is a reverse proxy, not a gateway. No UI, no quota, no protocol translation beyond what Mistral's Chat Completions API needs.
+A sticky Mistral key pool: one `PROXY_TOKEN` in, N keys out, same conversation stays on the same key. No UI, no quota. It only rewrites what Mistral Chat Completions needs.
 
 Public image (linux/amd64 and linux/arm64), no login required to pull:
 
@@ -24,7 +24,7 @@ docker pull ghcr.io/im594/mistral-sticky:latest
 
 Mistral caches the shared prefix of `messages` **per API key**. New API (and similar relays) often store hundreds of keys on one channel in `random` mode. Adjacent turns land on different keys, so `cache_tokens` stays near zero even on 10k+ token agent traces.
 
-This proxy:
+This pool:
 
 1. Authenticates with a single `PROXY_TOKEN` (what New API stores as the channel key)
 2. Derives a session id from `prompt_cache_key` / `conversation_id` / metadata, else `sha256(model + first system + first user)`
