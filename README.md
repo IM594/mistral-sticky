@@ -49,7 +49,7 @@ sudo chown -R 65532:65532 data
 docker compose up -d
 ```
 
-`docker-compose.yml` pulls `ghcr.io/im594/mistral-sticky:latest`. Pin a release with `ghcr.io/im594/mistral-sticky:v0.1.1` if you do not want `latest`.
+`docker-compose.yml` pulls `ghcr.io/im594/mistral-sticky:latest`. Pin a release with `ghcr.io/im594/mistral-sticky:v0.1.2` if you do not want `latest`.
 
 If New API is on another Compose network, use `docker-compose.external-network.yml` and set the Mistral channel `base_url` to `http://mistral-sticky:8080`.
 

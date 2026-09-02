@@ -49,7 +49,7 @@ sudo chown -R 65532:65532 data
 docker compose up -d
 ```
 
-`docker-compose.yml` 拉取 `ghcr.io/im594/mistral-sticky:latest`。不想跟 `latest` 走就钉死 `ghcr.io/im594/mistral-sticky:v0.1.1`。
+`docker-compose.yml` 拉取 `ghcr.io/im594/mistral-sticky:latest`。不想跟 `latest` 走就钉死 `ghcr.io/im594/mistral-sticky:v0.1.2`。
 
 如果 New API 在另一个 Compose 网络里，用 `docker-compose.external-network.yml`，渠道 `base_url` 设成 `http://mistral-sticky:8080`。
 
