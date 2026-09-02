@@ -39,8 +39,6 @@ Five turns of one agent session, same key:
 
 Turns 2–5 reused about 79% of the prompt from cache.
 
-On the same host, a 500-key random pool over 24 hours: 706 requests across 245 keys, the previous key reused 3 / 705 times, `cache_tokens` 5.4% of prompt tokens.
-
 ## Installation
 
 ```bash
@@ -72,15 +70,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"mistral-small-latest","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-Any Chat Completions client can use this as the Mistral base URL. A relay (New API, LiteLLM, one-api, and similar) should set its Mistral upstream to `http://mistral-sticky:8080` and store only `PROXY_TOKEN`. Official keys stay in sticky's `keys.txt`.
-
-If the relay rewrites the request body (especially tool-call ids), enable body pass-through. Otherwise the prefix changes every turn.
-
-### New API
-
-Channel type Mistral (42). `base_url` = `http://mistral-sticky:8080`. Single `PROXY_TOKEN`. Multi-key off. Auto-ban off. `pass_through_body_enabled` on. Lower the priority of other Mistral channels for the same model.
-
-The usage list may omit a discount badge (`cache_ratio` is 1). Read `cache_tokens` in the log detail.
+Any Chat Completions client can use this as the Mistral base URL. If another proxy sits in front, point that proxy at `http://mistral-sticky:8080` and keep official keys only in `keys.txt`. Do not rewrite the JSON body in front of sticky; changing tool-call ids each turn breaks the prefix.
 
 ## Agent instructions
 
@@ -96,7 +86,7 @@ Follow docker-compose.yml in the repository:
 2. mkdir -p data; write one official key per line to data/keys.txt; printf '{"entries":[]}\n' > data/cooldown.json.
 3. chown -R 65532:65532 data (the image runs as uid 65532).
 4. docker compose up -d. Default bind is 127.0.0.1:8080.
-5. Point any Chat Completions client at this service with Authorization: Bearer PROXY_TOKEN. If a relay already exists, set its Mistral upstream to http://mistral-sticky:8080 on the shared Docker network. Put only PROXY_TOKEN in the relay. If the relay rewrites bodies (tool_call ids), enable pass-through.
+5. Point any Chat Completions client at this service with Authorization: Bearer PROXY_TOKEN. If another proxy sits in front, set that proxy's Mistral base URL to http://mistral-sticky:8080 on the shared Docker network. Official keys stay in sticky's keys.txt. Do not rewrite request bodies in front of sticky.
 6. keys.txt is append-only. Do not rotate on 429. Logs may include key_index and session_fp; never log the raw key or Authorization.
 
 See README.md. Verify with curl /healthz and one /v1/chat/completions request.

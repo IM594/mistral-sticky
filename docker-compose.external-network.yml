@@ -1,4 +1,4 @@
-# Optional: join the network your relay already uses.
+# Optional: join an existing Docker network.
 # docker compose -f docker-compose.yml -f docker-compose.external-network.yml up -d
 services:
   mistral-sticky:

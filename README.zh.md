@@ -39,8 +39,6 @@ docker pull ghcr.io/im594/mistral-sticky:latest
 
 第 2–5 轮约 79% 的 prompt 来自缓存。
 
-同一主机上，500 把 key 随机选取、24 小时：706 次请求覆盖 245 把 key，相邻请求复用上一把 key 为 3 / 705，`cache_tokens` 占 prompt 的 5.4%。
-
 ## 安装
 
 ```bash
@@ -72,15 +70,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"mistral-small-latest","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-任意 Chat Completions 客户端可将此服务作为 Mistral 的 base URL。若使用中继（New API、LiteLLM、one-api 等），将其 Mistral 上游设为 `http://mistral-sticky:8080`，渠道中只保存 `PROXY_TOKEN`。官方 key 放在 sticky 的 `keys.txt` 中。
-
-若中继会改写请求 body（尤其是 tool-call id），需开启 body 透传，否则每轮前缀都会变化。
-
-### New API
-
-渠道类型为 Mistral (42)。`base_url` = `http://mistral-sticky:8080`。仅填写 `PROXY_TOKEN`。关闭多 key 与自动禁用。打开 `pass_through_body_enabled`。同一模型的其他 Mistral 渠道请降低优先级。
-
-用量列表可能不显示折扣（`cache_ratio` 为 1）。请在日志详情中查看 `cache_tokens`。
+任意 Chat Completions 客户端可将此服务作为 Mistral 的 base URL。若前面还有一层代理，把那一层的 Mistral 上游指到 `http://mistral-sticky:8080`，官方 key 只放在 `keys.txt`。不要在 sticky 前面改写 JSON body；每轮改 tool-call id 会把前缀打乱。
 
 ## 给 AI agent 的说明
 
@@ -96,7 +86,7 @@ mistral-sticky 是 Mistral key 池。客户端用 PROXY_TOKEN 鉴权，官方 AP
 2. mkdir -p data；官方 key 一行一把写入 data/keys.txt；printf '{"entries":[]}\n' > data/cooldown.json。
 3. chown -R 65532:65532 data（镜像以 uid 65532 运行）。
 4. docker compose up -d。默认绑定 127.0.0.1:8080。
-5. 将任意 Chat Completions 客户端指向该服务，Authorization 为 Bearer PROXY_TOKEN。若已有中继，在同一 Docker 网络上将其中 Mistral 上游设为 http://mistral-sticky:8080，渠道中只放 PROXY_TOKEN。若中继改写 body（tool_call id），开启透传。
+5. 将任意 Chat Completions 客户端指向该服务，Authorization 为 Bearer PROXY_TOKEN。若前面还有一层代理，在同一 Docker 网络上把它的 Mistral 上游设为 http://mistral-sticky:8080。官方 key 只放在 sticky 的 keys.txt。不要在 sticky 前面改写请求 body。
 6. keys.txt 只追加。不要在 429 时换 key。日志可包含 key_index 与 session_fp，禁止记录 key 原文或 Authorization。
 
 详见 README.zh.md。完成后用 curl 请求 /healthz 以及一次 /v1/chat/completions。
