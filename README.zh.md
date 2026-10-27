@@ -23,6 +23,7 @@ docker pull ghcr.io/im594/mistral-sticky:latest
 - 将 tool-call id 确定性映射为 Mistral 要求的 9 位字母数字
 - 去除 OpenAI 专有字段（`reasoning_effort: medium`、`stream_options` 等）
 - 401/403：将该 key 冷却 30 天
+- 402：将该 key 冷却 24 小时；响应发给客户端前切换重试，每次请求最多尝试 3 把 key
 - 429：保持同一把 key
 
 ## 示例

@@ -23,6 +23,7 @@ linux/amd64 and linux/arm64. Keys are mounted at runtime and must not be copied 
 - Deterministic mapping of tool-call ids to Mistral's 9-character alphabet
 - OpenAI-only fields stripped (`reasoning_effort: medium`, `stream_options`, …)
 - 401/403: that key is cooled for 30 days
+- 402: that key is cooled for 24 hours; retry before forwarding the response, with at most 3 keys per request
 - 429: the same key is kept
 
 ## Example
