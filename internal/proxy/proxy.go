@@ -23,7 +23,7 @@ type ctxKey int
 
 const (
 	ctxIndex ctxKey = iota
-	ctxSessionFP
+	ctxSessionKey
 )
 
 type Config struct {
@@ -47,12 +47,13 @@ func New(cfg Config) http.Handler {
 		})
 	})
 	rp := &httputil.ReverseProxy{
+		Transport: &budgetTransport{pool: cfg.Pool, logger: cfg.Logger},
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(cfg.Upstream)
 			pr.Out.Host = cfg.Upstream.Host
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			idx, _ := resp.Request.Context().Value(ctxIndex).(int)
+			idx := *resp.Request.Context().Value(ctxIndex).(*int)
 			switch {
 			case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 				cfg.Pool.Disable(idx, pool.CooldownUnauthorized, strconv.Itoa(resp.StatusCode))
@@ -64,8 +65,8 @@ func New(cfg Config) http.Handler {
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if idx, ok := r.Context().Value(ctxIndex).(int); ok {
-				cfg.Pool.Disable(idx, pool.CooldownUpstream, "transport")
+			if idx, ok := r.Context().Value(ctxIndex).(*int); ok {
+				cfg.Pool.Disable(*idx, pool.CooldownUpstream, "transport")
 			}
 			cfg.Logger.Warn("upstream error", "err", err.Error())
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
@@ -102,8 +103,12 @@ func New(cfg Config) http.Handler {
 			"key_index", idx,
 			"stream", strings.Contains(string(rewritten), `"stream":true`),
 		)
-		r = r.WithContext(context.WithValue(r.Context(), ctxIndex, idx))
+		r = r.WithContext(context.WithValue(r.Context(), ctxIndex, &idx))
+		r = r.WithContext(context.WithValue(r.Context(), ctxSessionKey, sess))
 		r.Body = io.NopCloser(bytes.NewReader(rewritten))
+		r.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(rewritten)), nil
+		}
 		r.ContentLength = int64(len(rewritten))
 		r.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
 		r.Header.Set("Authorization", "Bearer "+key)
@@ -118,6 +123,40 @@ func New(cfg Config) http.Handler {
 		)
 	})
 	return mux
+}
+
+type budgetTransport struct {
+	pool   *pool.Pool
+	logger *slog.Logger
+}
+
+func (t *budgetTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	idx := r.Context().Value(ctxIndex).(*int)
+	sess := r.Context().Value(ctxSessionKey).(string)
+	for attempt := 1; ; attempt++ {
+		resp, err := http.DefaultTransport.RoundTrip(r)
+		if err != nil || resp.StatusCode != http.StatusPaymentRequired {
+			return resp, err
+		}
+		t.pool.Disable(*idx, pool.CooldownBudget, "402")
+		t.logger.Warn("key budget exhausted", "session_fp", session.Fingerprint(sess), "key_index", *idx, "attempt", attempt)
+		if attempt >= 3 || r.Context().Err() != nil {
+			return resp, nil
+		}
+		nextIndex, key, ok := t.pool.Pick(sess)
+		if !ok {
+			return resp, nil
+		}
+		_ = resp.Body.Close()
+		next := r.Clone(r.Context())
+		next.Body, err = r.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		next.Header.Set("Authorization", "Bearer "+key)
+		*idx = nextIndex
+		r = next
+	}
 }
 
 func authorized(r *http.Request, token string) bool {

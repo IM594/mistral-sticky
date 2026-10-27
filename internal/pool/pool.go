@@ -13,6 +13,7 @@ import (
 
 const (
 	CooldownUnauthorized = 30 * 24 * time.Hour
+	CooldownBudget       = 24 * time.Hour
 	CooldownUpstream     = 30 * time.Second
 )
 

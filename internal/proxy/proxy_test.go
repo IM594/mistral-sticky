@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +134,71 @@ func TestRateLimitDoesNotRotateKey(t *testing.T) {
 	}
 	if len(auths) != 2 || auths[0] != auths[1] {
 		t.Fatalf("expected same upstream key after 429, auths=%v", auths)
+	}
+}
+
+func TestBudgetExhaustionRetriesAndKeepsReplacementKey(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(strconv.FormatBool(stream), func(t *testing.T) {
+			var auths []string
+			var bodies [][]byte
+			response := `{"ok":true}`
+			if stream {
+				response = "data: {\"ok\":true}\n\ndata: [DONE]\n\n"
+			}
+			h, p := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				auths = append(auths, r.Header.Get("Authorization"))
+				body, _ := io.ReadAll(r.Body)
+				bodies = append(bodies, body)
+				if len(auths) == 1 {
+					w.WriteHeader(http.StatusPaymentRequired)
+					_, _ = w.Write([]byte(`{"message":"API budget exhausted."}`))
+					return
+				}
+				if stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+				}
+				_, _ = io.WriteString(w, response)
+			})
+			body := `{"model":"ministral-8b-latest","stream":` + strconv.FormatBool(stream) + `,"messages":[{"role":"user","content":[{"type":"text","text":"Extract from this screenshot."},{"type":"image_url","image_url":{"url":"data:image/webp;base64,dGVzdA=="}}]}]}`
+			for i := 0; i < 2; i++ {
+				req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+				req.Header.Set("Authorization", "Bearer "+testToken)
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK || rec.Body.String() != response {
+					t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+				}
+			}
+			if len(auths) != 3 || auths[0] == auths[1] || auths[1] != auths[2] {
+				t.Fatalf("replacement key not sticky: %v", auths)
+			}
+			if !bytes.Equal(bodies[0], bodies[1]) || !bytes.Equal(bodies[1], bodies[2]) {
+				t.Fatal("request body changed during retry")
+			}
+			if p.DisabledCount() != 1 {
+				t.Fatalf("disabled=%d", p.DisabledCount())
+			}
+		})
+	}
+}
+
+func TestBudgetExhaustionLimitsAttempts(t *testing.T) {
+	var auths []string
+	h, p := newTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"message":"API budget exhausted."}`))
+	}, "key-a", "key-b", "key-c", "key-d", "key-e")
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusPaymentRequired || len(auths) != 3 || p.DisabledCount() != 3 {
+		t.Fatalf("status=%d calls=%d disabled=%d", rec.Code, len(auths), p.DisabledCount())
+	}
+	if auths[0] == auths[1] || auths[0] == auths[2] || auths[1] == auths[2] {
+		t.Fatalf("retried an exhausted key: %v", auths)
 	}
 }
 
@@ -260,13 +327,16 @@ func TestForwardsBodyWithoutLeakingProxyToken(t *testing.T) {
 	}
 }
 
-func newTestHandler(t *testing.T, upstream http.HandlerFunc) (http.Handler, *pool.Pool) {
+func newTestHandler(t *testing.T, upstream http.HandlerFunc, keys ...string) (http.Handler, *pool.Pool) {
 	t.Helper()
 	srv := httptest.NewServer(upstream)
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
 	keysPath := filepath.Join(dir, "keys.txt")
-	if err := os.WriteFile(keysPath, []byte("key-a\nkey-b\nkey-c\n"), 0o600); err != nil {
+	if len(keys) == 0 {
+		keys = []string{"key-a", "key-b", "key-c"}
+	}
+	if err := os.WriteFile(keysPath, []byte(strings.Join(keys, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	p, err := pool.LoadKeys(keysPath)
